@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>稻谷云管理</title>
+    <style type="text/css">
+        * {
+            font-family: "微软雅黑";
+            font-size: 16px;
+            border: 0;
+            padding: 0;
+            margin: 0;
+        }
+
+        #command {
+            width: 40%;
+            margin: 50px auto 15px auto;
+            font-size: 14px;
+        }
+
+        #cli {
+            width: 80%;
+            padding: 5px;
+            border: none;
+            border-bottom: 1px #ccc solid;
+            outline: none;
+            font-size: 14px;
+        }
+
+        #winx {
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        #box {
+            width: 40%;
+            margin: 0 auto;
+            background: #f2f2f2;
+            padding: 10px;
+            border-radius: 6px;
+        }
+
+        .toper {
+            width: 100%;
+            height: 30px;
+            border-bottom: 1px #ccc solid;
+            padding: 10px 0;
+        }
+
+        .nav {
+            display: inline-block;
+        }
+
+        .nav a {
+            color: #000;
+            text-decoration: none;
+        }
+
+
+        .ico {
+            padding: 0 6px;
+            color: #999;
+        }
+
+        .mainer {
+            margin-top: 15px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        #list {
+            height: 600px;
+            overflow: auto;
+        }
+
+        .mainer li {
+            padding: 5px 10px;
+            list-style: none;
+        }
+
+        .mainer li a {
+            color: #000;
+            text-decoration: underline !important;
+        }
+
+        #editor-bg {
+            position: absolute;
+            z-index: 97;
+            width: 100%;
+            height: 100%;
+            background: #333;
+            opacity: 0.6;
+            top: 0;
+            left: 0;
+            display: none;
+        }
+
+        #editor {
+            position: absolute;
+            width: 60%;
+            height: 600px;
+            background: #f2f2f2;
+            top: 50px;
+            left: 20%;
+            border-radius: 6px;
+            color: #000;
+            box-shadow: 0px 0px 50px rgba(0, 0, 0, 0.4);
+            display: none;
+            z-index: 98;
+            line-height: 24px;
+        }
+
+        /* 解决光标问题 */
+        .ace_editor,
+        .ace_editor * {
+            font-family: "Monaco", "Menlo", "Ubuntu Mono", "Droid Sans Mono", "Consolas", monospace !important;
+            font-size: 14px !important;
+            font-weight: 400 !important;
+            letter-spacing: 0 !important;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="command">命令行：<input type="text" id="cli" placeholder="请输入命令行"> <span id="winx">执行</span> </div>
+
+    <div id="box">
+        <div class="toper">
+            <ul id="bar">
+
+            </ul>
+        </div>
+        <div class="mainer">
+            <ul id="list">
+
+            </ul>
+        </div>
+    </div>
+
+    <div id="editor-bg"></div>
+    <div id="editor"></div>
+</body>
+
+<!-- toper模板 -->
+<script type="text/template" id="bar-template">
+    <li class="nav"><a href="javascript:;" data-dir="/">/</a><span class="ico">&gt</span></li>
+    {{each}}
+    <li class="nav"><a href="javascript:;" data-dir="{{$value}}" data-index="{{$index}}">{{$value}}</a><span class="ico">&gt</span></li>
+    {{/each}}
+</script>
+
+<!-- mainer模板 -->
+<script type="text/template" id="list-template">
+    {{each}}
+    <li>
+        <a href="javascript:;" data-dir="{{$value.filename}}" title="{{$value.user}}:{{$value.group}}">/ {{$value.filename}}</a> 
+    </li>
+    {{/each}}
+</script>
+
+<link rel="stylesheet" href="https://res.wx.qq.com/open/libs/weui/1.1.2/weui.min.css">
+<script type="text/javascript" src="https://res.wx.qq.com/open/libs/weuijs/1.1.3/weui.min.js"></script>
+<script src="http://apps.bdimg.com/libs/jquery/2.1.4/jquery.min.js"></script>
+<script src="/static/js/template-web.js"></script>
+<script src="/static/ace/src/ace.js" type="text/javascript" charset="utf-8"></script>
+
+<script>
+
+    // 初始化目录组和当前文件
+    var dirArr = [];
+    var filename = '';
+
+    // 初始化编辑器
+    var editor = ace.edit("editor");
+
+    // 编辑器设置
+    editor.setHighlightActiveLine(false);
+    editor.setShowPrintMargin(false);
+    editor.getSession().setUseSoftTabs(true);
+    editor.getSession().setUseWrapMode(true);
+    editor.getSession().setTabSize(4);
+    editor.setShowPrintMargin(false);
+    editor.setFontSize(14);
+
+    // 自定义保存命令
+    editor.commands.addCommand({
+        name: 'save',
+        bindKey: { win: 'Ctrl-S', mac: 'Command-S' },
+        exec: function (editor) {
+            $.ajax({
+                type: 'post',
+                url: '/index/save/?token=<?php echo $token; ?>',
+                data: {
+                    dir: '/' + dirArr.join('/') + '/' + filename,
+                    content: editor.getValue()
+                },
+                dataType: 'json',
+                beforeSend: function () {
+                    weui.loading('loading');
+                },
+                complete: function () {
+                    weui.loading('loading').hide();
+                },
+                success: function (res) {
+                    if (res.code == 1) {
+                        weui.toast(res.msg);
+                    } else {
+                        weui.topTips(res.msg);
+                    }
+                }
+            });
+        }
+    });
+
+
+    // 获取目录列表函数
+    function getDirList(currentDir, index) {
+        weui.loading('loading');
+
+        if (index) {
+            var tmpArr = [];
+
+            for (let i = 0; i < dirArr.length; i++) {
+                tmpArr.push(dirArr[i]);
+
+                if (i == index) {
+                    break;
+                }
+            }
+
+            dirArr = tmpArr;
+        }
+        else {
+            currentDir == '/' ? dirArr = [] : dirArr.push(currentDir);
+        }
+
+        $.ajax({
+            type: 'post',
+            url: '/index/list/?token=<?php echo $token; ?>',
+            data: {
+                dir: '/' + dirArr.join('/')
+            },
+            dataType: 'json',
+            beforeSend: function () {
+
+            },
+            complete: function () {
+                weui.loading('loading').hide();
+            },
+            success: function (res) {
+
+                // 目录
+                if (res.code == 1) {
+                    $('#bar').html(template('bar-template', dirArr));
+                    $('#list').html(template('list-template', res.data));
+                }
+
+                // 文件
+                if (res.code == 2) {
+                    filename = dirArr.pop();
+
+                    // 初始化文件内容
+                    editor.setValue(res.data);
+                    editor.clearSelection();
+
+                    // 显示编辑器
+                    $('#editor,#editor-bg').show();
+                }
+
+                console.log(dirArr);
+            }
+        });
+    }
+
+    getDirList('/', null);
+
+
+    // 取下级目录
+    $('#box').on('click', 'a', function () {
+        var currentDir = $(this).attr('data-dir');
+        var index = $(this).attr('data-index');
+
+        getDirList(currentDir, index);
+    })
+
+
+    // 隐藏编辑器
+    $('#editor-bg').on('click', function () {
+        $('#editor,#editor-bg').hide();
+    })
+
+
+
+    // 执行命令
+    $('#winx').on('click', function () {
+        $.ajax({
+            type: 'post',
+            url: '/index/exec/?token=<?php echo $token; ?>',
+            data: {
+                cli: $('#cli').val()
+            },
+            dataType: 'text',
+            beforeSend: function () {
+                weui.loading('loading');
+            },
+            complete: function () {
+                weui.loading('loading').hide();
+            },
+            success: function (res) {
+                console.log(res);
+            }
+        });
+    })
+</script>
+
+</html>
