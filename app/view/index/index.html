@@ -300,7 +300,7 @@
             data: {
                 cli: $('#cli').val()
             },
-            dataType: 'text',
+            dataType: 'json',
             beforeSend: function () {
                 weui.loading('loading');
             },
@@ -308,7 +308,13 @@
                 weui.loading('loading').hide();
             },
             success: function (res) {
-                console.log(res);
+
+                console.log(res.msg);
+
+                if(0 == res.code)
+                {
+                    weui.toast('执行成功');   
+                }
             }
         });
     })

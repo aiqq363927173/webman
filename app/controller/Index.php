@@ -113,6 +113,14 @@ class Index
     {
         $cli = $request->post('cli');
 
-        return response(shell_exec($cli));
+        // 执行
+        exec($cli . ' 2>&1', $output, $code);
+
+        return json([
+            'code' => $code,
+            'msg'  => $output
+        ]);
+
+        // return response(shell_exec($cli));
     }
 }
